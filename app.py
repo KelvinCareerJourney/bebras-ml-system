@@ -20,6 +20,25 @@ feature_names = ["練習次數", "簡單題答對率", "中等題答對率", "�
 model = RandomForestRegressor(n_estimators=100, random_state=42)
 model.fit(X_dummy, y_dummy)
 
+# PR 參照：來源為使用者提供的 2025 年 PR 公告／分數參照截圖。
+# 高分區對照（按截圖所列）：190→81，200/201→86，215→89，230→93，245→95，300→99。
+# 低分區只有「約」的分數區間，使用區間中點作為暫定近似錨點，不能視為精確官方單點常模。
+# 第二張參照圖另列「約 210 分→PR90」，與第一張的「215 分→PR89」不符合
+# 分數愈高 PR 不下降的單調性，因此不將 PR90 作為內插錨點，待來源核對。
+PR_SCORES = np.array([112.5, 142.5, 172.5, 190, 200, 201, 215, 230, 245, 300], dtype=float)
+PR_LEVELS = np.array([30, 50, 70, 81, 86, 86, 89, 93, 95, 99], dtype=float)
+
+def estimated_pr(score):
+    """歷史分數／PR 參照估計；低於最小錨點不作虛構外推。"""
+    score = float(score)
+    if not np.isfinite(score) or score < PR_SCORES[0]:
+        return None
+    return float(np.interp(score, PR_SCORES, PR_LEVELS))
+
+def pr_label(score):
+    value = estimated_pr(score)
+    return f"約 PR {value:.1f}" if value is not None else "低於參照範圍"
+
 def get_diagnostic_info(practice_count, easy, mid, hard, duration, score):
     badges, badge_text = [], []
     if hard >= 70 and easy < 70:
@@ -50,8 +69,8 @@ def get_diagnostic_info(practice_count, easy, mid, hard, duration, score):
     elif easy < 60:
         prescription = "目前在基礎運算思維的觀念上還有些不熟悉，不要灰心！萬丈高樓平地起，先把基礎打穩最重要。"
         action = "請開啟 Scratch 3.0，重新實作一次「變數與基本運算」的課堂範例，確認每塊積木的意義。"
-    elif score >= 235:
-        prescription = "太棒了！你目前的預測成績已經具備全國頂尖（PR 96以上）的水準，各項難易度的掌握度都非常優異。"
+    elif score >= 245:
+        prescription = "太棒了！你目前預測分數達到所提供歷史 PR95 對照分數，各項難易度的掌握度都非常優異。"
         action = "保持手感！建議開始挑戰我們課堂上的「進階星號題」，並嘗試將解題過程寫成 Scratch 程式碼來驗證思維。"
     else:
         prescription = "你的表現相當穩定！中等難度的邏輯轉換是目前拉高分數的關鍵，可以試著把答對率再往上推進。"
@@ -62,9 +81,7 @@ def get_diagnostic_info(practice_count, easy, mid, hard, duration, score):
 def predict_and_compare(practice_count, easy_acc, mid_acc, hard_acc, duration):
     input_data = np.array([[min(practice_count, 50)/50, easy_acc/100, mid_acc/100, hard_acc/100, min(duration, 120)/120]])
     score = min(max(float(model.predict(input_data)[0]), 60), 300)
-    xp = [60, 120, 150, 210, 230, 235, 255, 300]
-    yp = [1.0, 25.0, 50.0, 90.0, 95.0, 96.0, 98.0, 99.9]
-    pr_value = float(np.interp(score, xp, yp))
+    pr_text = pr_label(score)
 
     fig, ax = plt.subplots(figsize=(9.5, 3.3), dpi=110)
     fig.patch.set_facecolor('#ffffff')
@@ -107,8 +124,8 @@ def predict_and_compare(practice_count, easy_acc, mid_acc, hard_acc, duration):
         </div>
         <div style="width: 1px; height: 48px; background: rgba(255,255,255,0.25);"></div>
         <div style="text-align: center;">
-            <div style="font-size: 11px; opacity: 0.85; font-weight: 600; letter-spacing: 0.5px;">📊 CADET組全國落點</div>
-            <div style="font-size: 28px; font-weight: 800; margin-top: 4px;">PR {pr_value:.1f}</div>
+            <div style="font-size: 11px; opacity: 0.85; font-weight: 600; letter-spacing: 0.5px;">📊 歷史 PR 參照估計</div>
+            <div style="font-size: 28px; font-weight: 800; margin-top: 4px;">{pr_text}</div>
         </div>
     </div>
     """
@@ -144,11 +161,13 @@ def batch_predict(file):
                 raise ValueError(f"缺少必要欄位：{col}")
         norm_features = df[required_cols].values / np.array([50.0, 100.0, 100.0, 100.0, 120.0])
         scores = np.clip(model.predict(norm_features), 60, 300)
-        xp = [60, 120, 150, 210, 230, 235, 255, 300]
-        yp = [1.0, 25.0, 50.0, 90.0, 95.0, 96.0, 98.0, 99.9]
-        prs = [float(np.interp(s, xp, yp)) for s in scores]
+        prs = [estimated_pr(s) for s in scores]
         df["預測總分"] = np.round(scores, 1)
-        df["全國估計PR"] = np.round(prs, 1)
+        df["歷史PR估計值"] = pd.Series(prs, index=df.index, dtype=float).round(1)
+        df["PR估計說明"] = [
+            "低於參照範圍" if p is None else "依歷史對照點估計；低 PR 區間為近似值"
+            for p in prs
+        ]
         badges_list, action_list = [], []
         for i, row in df.iterrows():
             _, b_plain, _, act = get_diagnostic_info(row["練習次數"], row["簡單題答對率"], row["中等題答對率"], row["困難題答對率"], row["總練習時長"], df.at[i, "預測總分"])
@@ -194,7 +213,7 @@ button.primary { background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%) !
 
 with gr.Blocks(title="Bebras 學生表現預測與分析系統", theme=gr.themes.Soft(primary_hue="indigo", secondary_hue="blue"), css=custom_css) as demo:
     with gr.Column(elem_classes="main-header"):
-        gr.Markdown("# 🏆 國際運算思維挑戰賽 (Bebras) - 學生表現預測與分析系統\n精準評估學生學習成效、支援全班批量資料匯入，並結合**遊戲化標籤**與**自適應派題**，提供專屬 AI 診斷處方籤。")
+        gr.Markdown("# 🏆 國際運算思維挑戰賽 (Bebras) - 學生表現預測與分析系統\n探索性估計學生學習表現、支援全班批量資料匯入，並結合**遊戲化標籤**與**自適應派題**，提供專屬 AI 診斷處方籤。")
     with gr.Tabs():
         with gr.TabItem("📋 單筆預測與 AI 診斷"):
             with gr.Row(equal_height=False):
@@ -217,7 +236,7 @@ with gr.Blocks(title="Bebras 學生表現預測與分析系統", theme=gr.themes
             btn.click(predict_and_compare, inputs=[inp1, inp2, inp3, inp4, inp5], outputs=[out_score, out_diag, out_plot])
         with gr.TabItem("📂 檔案批量上傳與自動派題"):
             with gr.Column(elem_classes="card-box"):
-                gr.Markdown("### 📥 上傳學生資料 CSV 檔案\n系統將自動計算全班預測總分與 PR 值，並直接在報表中為每位學生**貼上遊戲化稱號**與**指派 Google Classroom / Scratch 專屬補救任務**！")
+                gr.Markdown("### 📥 上傳學生資料 CSV 檔案\n系統將估計全班總分與歷史 PR 參照值，並直接在報表中為每位學生**貼上遊戲化稱號**與**指派 Google Classroom / Scratch 專屬補救任務**！")
                 file_input = gr.File(label="選擇 CSV 檔案", file_types=[".csv"])
                 batch_btn = gr.Button("開始批量運算 ⚡", variant="primary")
                 gr.Markdown("### 📊 批量計算結果總表")
