@@ -161,63 +161,104 @@ def batch_predict(file):
     except Exception as e:
         raise gr.Error(str(e))
 
+FEATURE_NAMES = ["練習次數", "簡單題答對率", "中等題答對率", "困難題答對率", "總練習時長"]
+
+def get_feature_importance_plot():
+    # 只反映目前合成資料原型的特徵重要性，不代表真實學生因果影響。
+    values = model.feature_importances_
+    order = np.argsort(values)
+    labels = [FEATURE_NAMES[i] for i in order]
+    fig, ax = plt.subplots(figsize=(9.4, 4.3), dpi=120)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    ax.barh(range(5), values[order], color="#6366f1", height=0.58, zorder=3)
+    ax.set_yticks(range(5))
+    ax.set_yticklabels(labels, fontproperties=font_prop, fontsize=11)
+    ax.set_xlabel("相對特徵重要性", fontproperties=font_prop, fontsize=10)
+    ax.set_title("Random Forest｜五項特徵重要性", fontproperties=font_prop, fontsize=14, fontweight="bold", pad=12)
+    ax.grid(axis="x", alpha=0.14, zorder=0)
+    ax.spines["right"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    for i, value in enumerate(values[order]):
+        ax.text(value + 0.006, i, f"{value:.1%}", va="center", fontsize=10, color="#334155")
+    ax.set_xlim(0, max(values) * 1.22)
+    fig.tight_layout(pad=2)
+    return fig
+
 custom_css = """
-.gradio-container {max-width: 1460px !important; margin:auto !important; padding:18px 24px 40px !important;}
-.bebras-hero {background:linear-gradient(125deg,#fff,#eef2ff); padding:20px 24px;border-radius:16px;border:1px solid #e5e7eb;margin-bottom:10px;}
-.bebras-hero h1 {font-size:27px;line-height:1.3;margin:0 0 8px;}
-.bebras-hero p {margin:0;color:#475569;}
-.bebras-panel {background:white;border:1px solid #e5e7eb;border-radius:16px;padding:14px 16px 8px;box-shadow:0 5px 16px rgba(15,23,42,.04);}
-.bebras-panel h3 {margin-top:2px;}
-.bebras-score {display:grid;grid-template-columns:1fr 1fr;gap:18px;background:linear-gradient(115deg,#4f46e5,#2563eb);border-radius:14px;color:white;padding:20px 22px;margin-bottom:12px;}
-.bebras-score>div+div{border-left:1px solid #ffffff55;padding-left:22px;}
-.bebras-score-label{font-size:13px;opacity:.9;margin-bottom:5px;}
-.bebras-score-number{font-size:30px;line-height:1.25;font-weight:800;color:white;}
-.bebras-score-number small{font-size:15px;font-weight:500;}
-.bebras-plot img {object-fit:contain !important;max-height:420px !important;width:100% !important;}
-@media(max-width:800px){.bebras-score{grid-template-columns:1fr;}.bebras-score>div+div{border-left:none;padding-left:0;border-top:1px solid #ffffff55;padding-top:12px;}.gradio-container{padding:12px !important;}}
+.gradio-container {max-width: 1370px !important; margin:0 auto !important; padding:12px 22px 34px !important;}
+.bebras-head {display:flex;align-items:center;gap:14px;background:linear-gradient(110deg,#ffffff,#f0f3ff);border:1px solid #e7eaf4;border-radius:18px;padding:17px 21px;margin-bottom:7px;}
+.bebras-head .brand {font-size:29px;}
+.bebras-head h1{font-size:23px;line-height:1.3;letter-spacing:-.35px;margin:0 0 5px;font-weight:800;color:#1e293b;}
+.bebras-head p{font-size:13px;color:#64748b;margin:0;line-height:1.5;}
+.input-panel,.result-panel,.plot-panel {background:white;border:1px solid #e8ecf4;border-radius:18px;padding:15px 17px 12px;box-shadow:0 4px 18px rgba(31,41,55,.035);}
+.input-panel h3,.result-panel h3,.plot-panel h3{font-size:16px;margin:0 0 8px;}
+.bebras-score {display:grid;grid-template-columns:1fr 1fr;gap:8px;background:linear-gradient(110deg,#4f46e5,#2563eb);border-radius:14px;padding:19px 20px;color:white;margin-bottom:10px;}
+.bebras-score>div+div{border-left:1px solid #ffffff55;padding-left:17px;}
+.bebras-score-label{font-size:12px;opacity:.9;margin-bottom:7px;}
+.bebras-score-number{font-size:29px;font-weight:800;line-height:1.2;color:white;}
+.bebras-score-number small{font-size:14px;font-weight:500;}
+.bebras-note{font-size:12px;color:#64748b;line-height:1.5;margin:2px 0;}
+.bebras-plot img{width:100% !important;height:auto !important;object-fit:contain !important;max-height:355px !important;}
+@media(max-width:850px){.gradio-container{padding:9px !important}.bebras-head{padding:13px}.bebras-head h1{font-size:19px}.bebras-score{grid-template-columns:1fr}.bebras-score>div+div{border-left:0;border-top:1px solid #ffffff55;padding:12px 0 0}}
 """
 
 with gr.Blocks(title="Bebras 學生表現預測與分析系統") as demo:
-    gr.HTML("""<div class="bebras-hero"><h1>🏆 國際運算思維挑戰賽 (Bebras)｜學生表現預測與分析系統</h1>
-    <p>探索性估計學生學習表現、支援批量匯入，搭配遊戲化稱號與規則式學習建議。</p></div>""")
+    gr.HTML("""<div class="bebras-head"><div class="brand">🏆</div><div><h1>國際運算思維挑戰賽 (Bebras)｜學生表現預測與分析</h1>
+    <p>真實練習資料蒐集 × 機器學習原型 × 學習診斷｜現行模型以合成資料訓練，結果僅供探索參考</p></div></div>""")
     with gr.Tabs():
         with gr.Tab("📝 單筆預測與 AI 診斷"):
+            with gr.Column(elem_classes="input-panel"):
+                gr.Markdown("### 01　輸入學生學習數據")
+                with gr.Row():
+                    simple_acc = gr.Number(label="簡單題答對率 (%)", value=95, precision=0, min_width=145)
+                    med_acc = gr.Number(label="中等題答對率 (%)", value=78, precision=0, min_width=145)
+                    hard_acc = gr.Number(label="困難題答對率 (%)", value=45, precision=0, min_width=145)
+                    practice_count = gr.Number(label="練習次數 (次)", value=32, precision=0, min_width=145)
+                    duration = gr.Number(label="練習時長 (分鐘)", value=50, precision=0, min_width=145)
+                predict_btn = gr.Button("開始預測與診斷 🚀", variant="primary")
             with gr.Row(equal_height=False):
-                with gr.Column(scale=5, min_width=340, elem_classes="bebras-panel"):
-                    gr.Markdown("### 📝 輸入學生學習數據")
-                    with gr.Row():
-                        simple_acc = gr.Number(label="簡單題答對率 (%)", value=95, precision=0)
-                        med_acc = gr.Number(label="中等題答對率 (%)", value=78, precision=0)
-                        hard_acc = gr.Number(label="困難題答對率 (%)", value=45, precision=0)
-                    with gr.Row():
-                        practice_count = gr.Number(label="練習次數 (次)", value=32, precision=0)
-                        duration = gr.Number(label="總練習時長 (分鐘)", value=50, precision=0)
-                    predict_btn = gr.Button("開始預測與診斷 🚀", variant="primary")
+                with gr.Column(scale=5, min_width=350, elem_classes="result-panel"):
+                    gr.Markdown("### 02　學習表現與個別建議")
                     score_out = gr.HTML()
-                with gr.Column(scale=7, min_width=430, elem_classes="bebras-panel"):
-                    gr.Markdown("### 🤖 AI 專屬教練診斷報告")
-                    with gr.Row():
-                        badge_out = gr.Textbox(label="遊戲化稱號", interactive=False)
-                        task_out = gr.Textbox(label="推薦任務", interactive=False)
-                    prescription_out = gr.Textbox(label="🩺 學習處方籤", interactive=False, lines=4)
-                    gr.Markdown("### 📊 學習落差對比分析")
+                    badge_out = gr.Textbox(label="遊戲化稱號", interactive=False)
+                    prescription_out = gr.Textbox(label="學習處方籤", interactive=False, lines=3)
+                    task_out = gr.Textbox(label="推薦任務", interactive=False, lines=2)
+                with gr.Column(scale=6, min_width=430, elem_classes="plot-panel"):
+                    gr.Markdown("### 03　難度答對率比較")
                     plot_out = gr.Image(show_label=False, interactive=False, type="filepath", elem_classes="bebras-plot")
-                    gr.Markdown("註：灰色長條目前為固定示意參考值，尚非實測全校平均。")
+                    gr.HTML('<p class="bebras-note">灰色長條為固定示意參考值（85%、65%、40%），不是實測全校平均。</p>')
             predict_btn.click(
+                fn=predict_single,
+                inputs=[practice_count, duration, simple_acc, med_acc, hard_acc],
+                outputs=[score_out, badge_out, prescription_out, task_out, plot_out],
+            )
+            demo.load(
                 fn=predict_single,
                 inputs=[practice_count, duration, simple_acc, med_acc, hard_acc],
                 outputs=[score_out, badge_out, prescription_out, task_out, plot_out],
             )
         with gr.Tab("📁 檔案批量上傳與自動派題"):
             with gr.Row():
-                with gr.Column(scale=4, elem_classes="bebras-panel"):
-                    gr.Markdown("### 📁 上傳全班 CSV 紀錄檔")
+                with gr.Column(scale=4, min_width=300, elem_classes="input-panel"):
+                    gr.Markdown("### 批量資料匯入")
                     file_input = gr.File(label="選擇 CSV 檔案", file_types=[".csv"])
                     batch_btn = gr.Button("開始批量運算與診斷", variant="primary")
                     file_output = gr.File(label="下載完整診斷報表")
-                with gr.Column(scale=8, elem_classes="bebras-panel"):
-                    df_output = gr.Dataframe(label="預測結果預覽（含建議任務）", wrap=True)
+                with gr.Column(scale=7, min_width=430, elem_classes="result-panel"):
+                    gr.Markdown("### 學生預測與建議總表")
+                    df_output = gr.Dataframe(label="結果預覽", wrap=True)
             batch_btn.click(fn=batch_predict, inputs=file_input, outputs=[df_output, file_output])
+        with gr.Tab("📊 模型特徵重要性分析"):
+            with gr.Column(elem_classes="result-panel"):
+                gr.Markdown("### Random Forest 模型特徵重要性")
+                gr.Markdown("此圖呈現目前 **300 筆合成資料原型** 中五項特徵的相對權重；不能作為真實學習成效或因果效果的證據。")
+                fi_btn = gr.Button("重新產生特徵重要性圖", variant="secondary")
+                fi_plot = gr.Plot(show_label=False)
+                fi_btn.click(fn=get_feature_importance_plot, outputs=[fi_plot])
+                demo.load(fn=get_feature_importance_plot, outputs=[fi_plot])
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=8501, theme=gr.themes.Soft(primary_hue="indigo"), css=custom_css)
+    demo.launch(server_name="0.0.0.0", server_port=8501,
+                theme=gr.themes.Soft(primary_hue="indigo"), css=custom_css)
