@@ -12,9 +12,10 @@ import os
 font_path = "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"
 if os.path.exists(font_path):
     font_prop = fm.FontProperties(fname=font_path)
-    plt.rcParams['font.family'] = font_prop.get_name()
+    plt.rcParams["font.family"] = font_prop.get_name()
 else:
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'sans-serif']
+    font_prop = fm.FontProperties(family='DejaVu Sans')
+    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'sans-serif']
 
 np.random.seed(42)
 X_dummy = np.random.rand(300, 5)
@@ -67,33 +68,36 @@ def get_diagnostic_info(practice_count, duration, simple_acc, med_acc, hard_acc)
     return badge, prescription, task
 
 def generate_plot(simple_acc, med_acc, hard_acc):
-    plt.figure(figsize=(8, 4))
     categories = ['簡單題', '中等題', '困難題']
     student_scores = [simple_acc, med_acc, hard_acc]
-    school_avg = [85, 65, 40]  # 尚未串接實際全校平均；固定示意參考值
-    
-    x = np.arange(len(categories))
-    width = 0.35
-    
-    plt.bar(x - width/2, student_scores, width, label='該名學生', color='#4f46e5')
-    plt.bar(x + width/2, school_avg, width, label='示意參考值', color='#cbd5e1')
-    
-    plt.ylabel('答對率 (%)')
-    plt.title('各難易度題型答對率 vs 示意參考值對比')
-    plt.xticks(x, categories)
-    plt.ylim(0, 100)
-    plt.legend()
-    
-    for i, v in enumerate(student_scores):
-        plt.text(i - width/2, v + 2, f"{v}%", ha='center', color='#4f46e5', fontweight='bold')
-    for i, v in enumerate(school_avg):
-        plt.text(i + width/2, v + 2, f"{v}%", ha='center', color='gray')
-        
-    plt.tight_layout()
-    plot_path = tempfile.mktemp(suffix=".png")
-    plt.savefig(plot_path)
-    plt.close()
-    return plot_path
+    reference_scores = [85, 65, 40]  # 示例參考值，非實測全校平均
+
+    fig, ax = plt.subplots(figsize=(8.4, 3.7), dpi=115)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    x = np.arange(3)
+    w = 0.32
+    bars1 = ax.bar(x-w/2, student_scores, w, label='該名學生', color='#4f46e5', zorder=3)
+    bars2 = ax.bar(x+w/2, reference_scores, w, label='示意參考值', color='#cbd5e1', zorder=3)
+    ax.set_xticks(x)
+    ax.set_xticklabels(categories, fontproperties=font_prop, fontsize=11)
+    ax.set_ylabel('答對率 (%)', fontproperties=font_prop, fontsize=10)
+    ax.set_title('各難度答對率對比', fontproperties=font_prop, fontsize=13, weight='bold', pad=13)
+    ax.set_ylim(0, 110)
+    ax.grid(axis='y', linestyle='--', alpha=0.20, zorder=0)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.legend(prop=font_prop, frameon=False, loc='upper right')
+    for bars, vals, col in ((bars1, student_scores, '#4f46e5'), (bars2, reference_scores, '#64748b')):
+        for bar, value in zip(bars, vals):
+            ax.text(bar.get_x()+bar.get_width()/2, value+2, f'{float(value):g}%',
+                    ha='center', color=col, fontsize=9, weight='bold')
+    fig.tight_layout(pad=1.8)
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+        path = tmp.name
+    fig.savefig(path, facecolor='white', bbox_inches='tight')
+    plt.close(fig)
+    return path
 
 def predict_single(practice_count, duration, simple_acc, med_acc, hard_acc):
     count_c = np.clip(practice_count, 0, 50)
@@ -110,15 +114,11 @@ def predict_single(practice_count, duration, simple_acc, med_acc, hard_acc):
     plot_path = generate_plot(simple_c, med_c, hard_c)
     
     score_html = f"""
-    <div style="background: linear-gradient(135deg, #4f46e5, #2563eb); color: white; padding: 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center;">
-        <div>
-            <div style="font-size: 14px; opacity: 0.9;">🎯 預測評量總分</div>
-            <div style="font-size: 36px; font-weight: bold;">{score:.1f} <span style="font-size: 18px; font-weight: normal;">/300</span></div>
-        </div>
-        <div style="border-left: 2px solid rgba(255,255,255,0.2); padding-left: 20px;">
-            <div style="font-size: 14px; opacity: 0.9;">📊 2025 歷史 PR 參照估計</div>
-            <div style="font-size: 36px; font-weight: bold;">{pr_display(score)}</div>
-        </div>
+    <div class="bebras-score">
+      <div><div class="bebras-score-label">🎯 預測評量總分</div>
+           <div class="bebras-score-number">{score:.1f}<small> / 300</small></div></div>
+      <div><div class="bebras-score-label">📊 2025 歷史 PR 參照估計</div>
+           <div class="bebras-score-number">{pr_display(score)}</div></div>
     </div>
     """
     return score_html, badge, prescription, task, plot_path
@@ -161,54 +161,63 @@ def batch_predict(file):
     except Exception as e:
         raise gr.Error(str(e))
 
-with gr.Blocks(theme=gr.themes.Soft(primary_hue="indigo")) as demo:
-    gr.Markdown("""
-    # 🏆 國際運算思維挑戰賽 (Bebras) - 學生表現預測與分析系統
-    探索性估計學生學習表現、支援全班批量資料匯入，並結合遊戲化標籤與自適應派題，提供專屬 AI 診斷處方籤。
-    """)
-    
+custom_css = """
+.gradio-container {max-width: 1460px !important; margin:auto !important; padding:18px 24px 40px !important;}
+.bebras-hero {background:linear-gradient(125deg,#fff,#eef2ff); padding:20px 24px;border-radius:16px;border:1px solid #e5e7eb;margin-bottom:10px;}
+.bebras-hero h1 {font-size:27px;line-height:1.3;margin:0 0 8px;}
+.bebras-hero p {margin:0;color:#475569;}
+.bebras-panel {background:white;border:1px solid #e5e7eb;border-radius:16px;padding:14px 16px 8px;box-shadow:0 5px 16px rgba(15,23,42,.04);}
+.bebras-panel h3 {margin-top:2px;}
+.bebras-score {display:grid;grid-template-columns:1fr 1fr;gap:18px;background:linear-gradient(115deg,#4f46e5,#2563eb);border-radius:14px;color:white;padding:20px 22px;margin-bottom:12px;}
+.bebras-score>div+div{border-left:1px solid #ffffff55;padding-left:22px;}
+.bebras-score-label{font-size:13px;opacity:.9;margin-bottom:5px;}
+.bebras-score-number{font-size:30px;line-height:1.25;font-weight:800;color:white;}
+.bebras-score-number small{font-size:15px;font-weight:500;}
+.bebras-plot img {object-fit:contain !important;max-height:420px !important;width:100% !important;}
+@media(max-width:800px){.bebras-score{grid-template-columns:1fr;}.bebras-score>div+div{border-left:none;padding-left:0;border-top:1px solid #ffffff55;padding-top:12px;}.gradio-container{padding:12px !important;}}
+"""
+
+with gr.Blocks(title="Bebras 學生表現預測與分析系統") as demo:
+    gr.HTML("""<div class="bebras-hero"><h1>🏆 國際運算思維挑戰賽 (Bebras)｜學生表現預測與分析系統</h1>
+    <p>探索性估計學生學習表現、支援批量匯入，搭配遊戲化稱號與規則式學習建議。</p></div>""")
     with gr.Tabs():
         with gr.Tab("📝 單筆預測與 AI 診斷"):
-            with gr.Row():
-                with gr.Column(scale=4):
+            with gr.Row(equal_height=False):
+                with gr.Column(scale=5, min_width=340, elem_classes="bebras-panel"):
                     gr.Markdown("### 📝 輸入學生學習數據")
-                    
                     with gr.Row():
                         simple_acc = gr.Number(label="簡單題答對率 (%)", value=95, precision=0)
                         med_acc = gr.Number(label="中等題答對率 (%)", value=78, precision=0)
                         hard_acc = gr.Number(label="困難題答對率 (%)", value=45, precision=0)
-                        
                     with gr.Row():
                         practice_count = gr.Number(label="練習次數 (次)", value=32, precision=0)
                         duration = gr.Number(label="總練習時長 (分鐘)", value=50, precision=0)
-                        
                     predict_btn = gr.Button("開始預測與診斷 🚀", variant="primary")
                     score_out = gr.HTML()
-                    
-                with gr.Column(scale=6):
+                with gr.Column(scale=7, min_width=430, elem_classes="bebras-panel"):
                     gr.Markdown("### 🤖 AI 專屬教練診斷報告")
                     with gr.Row():
                         badge_out = gr.Textbox(label="遊戲化稱號", interactive=False)
                         task_out = gr.Textbox(label="推薦任務", interactive=False)
-                    prescription_out = gr.Textbox(label="🩺 學習處方籤", interactive=False, lines=3)
-                    plot_out = gr.Image(label="學習落差對比分析")
-                    
+                    prescription_out = gr.Textbox(label="🩺 學習處方籤", interactive=False, lines=4)
+                    gr.Markdown("### 📊 學習落差對比分析")
+                    plot_out = gr.Image(show_label=False, interactive=False, type="filepath", elem_classes="bebras-plot")
+                    gr.Markdown("註：灰色長條目前為固定示意參考值，尚非實測全校平均。")
             predict_btn.click(
                 fn=predict_single,
                 inputs=[practice_count, duration, simple_acc, med_acc, hard_acc],
-                outputs=[score_out, badge_out, prescription_out, task_out, plot_out]
+                outputs=[score_out, badge_out, prescription_out, task_out, plot_out],
             )
-            
         with gr.Tab("📁 檔案批量上傳與自動派題"):
             with gr.Row():
-                with gr.Column(scale=4):
-                    file_input = gr.File(label="上傳全班 CSV 紀錄檔", file_types=['.csv'])
+                with gr.Column(scale=4, elem_classes="bebras-panel"):
+                    gr.Markdown("### 📁 上傳全班 CSV 紀錄檔")
+                    file_input = gr.File(label="選擇 CSV 檔案", file_types=[".csv"])
                     batch_btn = gr.Button("開始批量運算與診斷", variant="primary")
                     file_output = gr.File(label="下載完整診斷報表")
-                with gr.Column(scale=8):
-                    df_output = gr.Dataframe(label="預測結果預覽 (含 AI 自動派題)")
-            
+                with gr.Column(scale=8, elem_classes="bebras-panel"):
+                    df_output = gr.Dataframe(label="預測結果預覽（含建議任務）", wrap=True)
             batch_btn.click(fn=batch_predict, inputs=file_input, outputs=[df_output, file_output])
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=8501)
+    demo.launch(server_name="0.0.0.0", server_port=8501, theme=gr.themes.Soft(primary_hue="indigo"), css=custom_css)
