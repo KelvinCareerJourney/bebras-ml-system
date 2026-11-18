@@ -187,6 +187,7 @@ def get_feature_importance_plot():
     return fig
 
 custom_css = """
+/* DEBUG TEST: custom CSS intentionally not loaded into Gradio */
 .gradio-container {max-width: 1370px !important; margin:0 auto !important; padding:12px 22px 34px !important;}
 .bebras-head {display:flex;align-items:center;gap:14px;background:linear-gradient(110deg,#ffffff,#f0f3ff);border:1px solid #e7eaf4;border-radius:18px;padding:17px 21px;margin-bottom:7px;}
 .bebras-head .brand {font-size:29px;}
@@ -255,4 +256,4 @@ with gr.Blocks(title="Bebras 學生表現預測與分析系統") as demo:
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=8501,
-                theme=gr.themes.Soft(primary_hue="indigo"), css=custom_css)
+                )
