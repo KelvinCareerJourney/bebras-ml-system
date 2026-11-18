@@ -234,11 +234,6 @@ with gr.Blocks(title="Bebras 學生表現預測與分析系統") as demo:
                 inputs=[practice_count, duration, simple_acc, med_acc, hard_acc],
                 outputs=[score_out, badge_out, prescription_out, task_out, plot_out],
             )
-            demo.load(
-                fn=predict_single,
-                inputs=[practice_count, duration, simple_acc, med_acc, hard_acc],
-                outputs=[score_out, badge_out, prescription_out, task_out, plot_out],
-            )
         with gr.Tab("📁 檔案批量上傳與自動派題"):
             with gr.Row():
                 with gr.Column(scale=4, min_width=300, elem_classes="input-panel"):
@@ -257,7 +252,6 @@ with gr.Blocks(title="Bebras 學生表現預測與分析系統") as demo:
                 fi_btn = gr.Button("重新產生特徵重要性圖", variant="secondary")
                 fi_plot = gr.Plot(show_label=False)
                 fi_btn.click(fn=get_feature_importance_plot, outputs=[fi_plot])
-                demo.load(fn=get_feature_importance_plot, outputs=[fi_plot])
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=8501,
